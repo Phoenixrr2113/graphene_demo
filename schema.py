@@ -6,6 +6,11 @@ from datetime import datetime
 # Model
 
 
+class Post(graphene.ObjectType):
+    title = graphene.String()
+    content = graphene.String()
+
+
 class User(graphene.ObjectType):
     # id = graphene.ID()
     # created_at = graphene.DateTime()
@@ -13,13 +18,17 @@ class User(graphene.ObjectType):
     username = graphene.String()
     created_at = graphene.DateTime(default_value=datetime.now())
  # this makes getting created at and id dynamic so we dont have to pass them in the mutate function
+    avatar_url = graphene.String()
 
+    def resolve_avatar_url(self, info):
+        return 'https://cloudinary.com/{}/{}'.format(self.username, self.id)
 #  Query
 
 
 class Query(graphene.ObjectType):
-    users = graphene.List(User)
-    # users = graphene.List(User, limit=graphene.Int()) using limits.
+    # using limits.
+    users = graphene.List(User, limit=graphene.Int())
+    # users = graphene.List(User)
     hello = graphene.String()
     is_admin = graphene.Boolean()
 
@@ -28,12 +37,13 @@ class Query(graphene.ObjectType):
     def resolve_hello(self, info):
         return "world"
 
-    def resolve_users(self, info):
-        # def resolve_users(self, info, limit=None): when using limit and also making it optional
+    def resolve_users(self, info, limit=None):
+        # when using limit and also making it optional def resolve_users(self, info):
         return [
             User(id=1, username="fred", created_at=datetime.now()),
             User(id=2, username="ken", created_at=datetime.now()),
-        ]
+        ][:limit]
+        # [:limit] is needed when using limit
 
     def resolve_is_admin(self, info):
         return True
@@ -53,8 +63,22 @@ class CreateUser(graphene.Mutation):
 # Mutation
 
 
+class CreatePost(graphene.Mutation):
+    post = graphene.Field(Post)
+
+    class Arguments:
+        title = graphene.String()
+        content = graphene.String()
+
+    def mutate(self, info, title, content):
+        info.context.get('is_anonymous')
+        post = Post(title=title, content=content)
+        return CreatePost(post=post)
+
+
 class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()  # class that handles creating user
+    create_post = CreatePost.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
@@ -65,15 +89,16 @@ schema = graphene.Schema(query=Query, mutation=Mutation)
 result = schema.execute(
     '''
       mutation {
-        createUser(username: "Joe") {
-          user {
-            id
-            username
-            createdAt
+        createPost(title: "Hello", content: "World") {
+          post {
+            title
+            content
           }
         }
       }
+      
     ''',
+    context={'is_anonymous': True},
     # mutation ($username: String) {
     # using variables to make mutations dynamic
     #       createUser(username: $username) {
@@ -92,7 +117,25 @@ result = schema.execute(
     #     createdAt
     #   }
     # }
-    variable_values={'username': 'Dave'}
+    # mutation {
+    #     createUser(username: "Joe") {
+    #       user {
+    #         id
+    #         username
+    #         createdAt
+    #       }
+    #     }
+    #   }
+
+    # query getUsersQuery ($limit: Int) {
+    #     users (limit: $limit) {
+    #       id
+    #       username
+    #       createdAt
+    #     }
+    #   }
+    # variable_values={'username': 'Dave'}
+    variable_values={'limit': 1}
 )
 
 dictResult = dict(result.data.items())
